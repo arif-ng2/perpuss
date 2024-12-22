@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'dart:convert';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  await Hive.openBox('appData');
   runApp(const MyApp());
 }
 
@@ -62,6 +68,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  late final Box _box;
   final List<MenuItem> _menuItems = [];
   final Map<String, int> _orderCount = {};
   final List<OrderHistory> _orderHistory = [];
@@ -69,6 +76,71 @@ class _HomePageState extends State<HomePage> {
   final _nameController = TextEditingController();
   final _priceController = TextEditingController();
   
+  @override
+  void initState() {
+    super.initState();
+    _box = Hive.box('appData');
+    _loadData();
+  }
+
+  void _loadData() {
+    // Load menu items
+    final menuItemsJson = _box.get('menuItems');
+    if (menuItemsJson != null) {
+      final List<dynamic> items = json.decode(menuItemsJson);
+      _menuItems.clear();
+      for (var item in items) {
+        _menuItems.add(MenuItem(
+          name: item['name'],
+          price: item['price'],
+        ));
+      }
+    }
+
+    // Load order history
+    final historyJson = _box.get('orderHistory');
+    if (historyJson != null) {
+      final List<dynamic> history = json.decode(historyJson);
+      _orderHistory.clear();
+      for (var order in history) {
+        final List<OrderItem> items = [];
+        for (var item in order['items']) {
+          items.add(OrderItem(
+            name: item['name'],
+            price: item['price'],
+            quantity: item['quantity'],
+          ));
+        }
+        _orderHistory.add(OrderHistory(
+          timestamp: DateTime.parse(order['timestamp']),
+          items: items,
+          total: order['total'],
+        ));
+      }
+    }
+  }
+
+  void _saveData() {
+    // Save menu items
+    final menuItemsJson = json.encode(_menuItems.map((item) => {
+      'name': item.name,
+      'price': item.price,
+    }).toList());
+    _box.put('menuItems', menuItemsJson);
+
+    // Save order history
+    final historyJson = json.encode(_orderHistory.map((order) => {
+      'timestamp': order.timestamp.toIso8601String(),
+      'items': order.items.map((item) => {
+        'name': item.name,
+        'price': item.price,
+        'quantity': item.quantity,
+      }).toList(),
+      'total': order.total,
+    }).toList());
+    _box.put('orderHistory', historyJson);
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -155,6 +227,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                   );
                 });
+                _saveData(); // Save after adding menu item
                 _nameController.clear();
                 _priceController.clear();
                 Navigator.pop(context);
@@ -530,6 +603,7 @@ class _HomePageState extends State<HomePage> {
         ));
         _orderCount.clear();
       });
+      _saveData(); // Save after adding order
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -553,14 +627,7 @@ class _HomePageState extends State<HomePage> {
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
-              // Keluar dari aplikasi
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ExitScreen(),
-                ),
-              );
+              SystemNavigator.pop(); // Ini akan benar-benar menutup aplikasi
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -876,6 +943,7 @@ class _HomePageState extends State<HomePage> {
                                       _menuItems.removeWhere((item) => item.name == title);
                                       _orderCount.remove(title);
                                     });
+                                    _saveData(); // Save after removing menu item
                                     Navigator.pop(context);
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
