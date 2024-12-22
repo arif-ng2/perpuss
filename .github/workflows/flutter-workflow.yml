@@ -1,0 +1,87 @@
+name: Flutter CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      # Setup Java
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      
+      # Setup Flutter
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: 'stable'
+          
+      # Get Flutter dependencies
+      - name: Get dependencies
+        run: flutter pub get
+        
+      # Check for any formatting issues
+      - name: Check formatting
+        run: dart format --set-exit-if-changed .
+        
+      # Statically analyze the Dart code
+      - name: Analyze code
+        run: flutter analyze .
+        
+      # Run widget tests
+      - name: Run tests
+        run: flutter test
+        
+      # Build APK
+      - name: Build APK
+        run: flutter build apk --release
+        
+      # Upload APK
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk          
+      # Build Android App Bundle
+      - name: Build App Bundle
+        run: flutter build appbundle --release
+        
+      # Upload Android App Bundle
+      - name: Upload App Bundle
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-bundle
+          path: build/app/outputs/bundle/release/app-release.aab
+
+  # Deploy job (optional, uncomment if you want to deploy to Play Store)
+  # deploy:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     
+  #     # Download the APK from the build job
+  #     - name: Download APK
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: release-apk
+  #         
+  #     # Deploy to Play Store
+  #     - name: Deploy to Play Store
+  #       uses: r0adkll/upload-google-play@v1
+  #       with:
+  #         serviceAccountJsonPlainText: ${{ secrets.PLAYSTORE_ACCOUNT_KEY }}
+  #         packageName: com.example.bakso_bang_farid
+  #         releaseFiles: app-release.apk
+  #         track: production 
