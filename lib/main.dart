@@ -424,8 +424,9 @@ class _HomePageState extends State<HomePage> {
                                         setState(() {
                                           _orderHistory.clear();
                                         });
-                                        Navigator.pop(context);
-                                        Navigator.pop(context);
+                                        _saveData(); // Simpan perubahan setelah menghapus
+                                        Navigator.pop(context); // Tutup dialog konfirmasi
+                                        Navigator.pop(context); // Tutup dialog riwayat
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           const SnackBar(
                                             content: Text('Semua riwayat pesanan telah dihapus'),
@@ -503,6 +504,7 @@ class _HomePageState extends State<HomePage> {
                                                 setState(() {
                                                   _orderHistory.removeAt(index);
                                                 });
+                                                _saveData(); // Simpan perubahan setelah menghapus
                                                 Navigator.pop(context);
                                                 ScaffoldMessenger.of(context).showSnackBar(
                                                   const SnackBar(
@@ -510,6 +512,10 @@ class _HomePageState extends State<HomePage> {
                                                     backgroundColor: Colors.orange,
                                                   ),
                                                 );
+                                                // Tutup dialog riwayat jika tidak ada pesanan lagi
+                                                if (_orderHistory.isEmpty) {
+                                                  Navigator.pop(context);
+                                                }
                                               },
                                               style: ElevatedButton.styleFrom(
                                                 backgroundColor: Colors.red,
