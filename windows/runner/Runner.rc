@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "bakso_bang_farid" "\0"
+            VALUE "FileDescription", "template_rendi_app" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "bakso_bang_farid" "\0"
+            VALUE "InternalName", "template_rendi_app" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2024 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "bakso_bang_farid.exe" "\0"
-            VALUE "ProductName", "bakso_bang_farid" "\0"
+            VALUE "OriginalFilename", "template_rendi_app.exe" "\0"
+            VALUE "ProductName", "template_rendi_app" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

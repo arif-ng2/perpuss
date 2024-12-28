@@ -6,18 +6,17 @@
 // tree, read text, and verify that the values of widget properties are correct.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cash_mee/main.dart';
+import 'package:template_rendi_app/main.dart';
 
 void main() {
   testWidgets('App should start without crashing', (WidgetTester tester) async {
     // Build our app and trigger a frame.
     await tester.pumpWidget(const MyApp());
 
-    // Verify that app starts with Cash Mee title
-    expect(find.text('Cash Mee'), findsOneWidget);
+    // Verify that app starts with Home Page title
+    expect(find.text('Home Page'), findsOneWidget);
 
-    // Verify that we have two tabs
-    expect(find.text('Ringkasan'), findsOneWidget);
-    expect(find.text('Mahasiswa'), findsOneWidget);
+    // Verify that welcome message is displayed
+    expect(find.text('Selamat Datang di Template App'), findsOneWidget);
   });
 }

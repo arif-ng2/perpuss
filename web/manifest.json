@@ -1,6 +1,6 @@
 {
-    "name": "bakso_bang_farid",
-    "short_name": "bakso_bang_farid",
+    "name": "template_rendi_app",
+    "short_name": "template_rendi_app",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

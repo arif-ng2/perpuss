@@ -1,6 +1,6 @@
-# bakso_bang_farid
+# template_rendi_app
 
-A new Flutter project.
+A new Flutter project template.
 
 ## Getting Started
 
