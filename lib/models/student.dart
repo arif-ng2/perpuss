@@ -5,10 +5,10 @@ part 'student.g.dart';
 @HiveType(typeId: 1)
 class Student extends HiveObject {
   @HiveField(0)
-  final String name;
+  String name;
 
   @HiveField(1)
-  final String studentId;
+  String studentId;
 
   @HiveField(2)
   double balance;
@@ -17,9 +17,9 @@ class Student extends HiveObject {
   List<String> transactionIds;
 
   Student({
-    required this.name, 
+    required this.name,
     required this.studentId,
-    this.balance = 0,
-    List<String>? transactionIds,
-  }) : transactionIds = transactionIds ?? [];
+    required this.balance,
+    required this.transactionIds,
+  });
 } 

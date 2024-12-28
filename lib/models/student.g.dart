@@ -20,7 +20,7 @@ class StudentAdapter extends TypeAdapter<Student> {
       name: fields[0] as String,
       studentId: fields[1] as String,
       balance: fields[2] as double,
-      transactionIds: (fields[3] as List?)?.cast<String>(),
+      transactionIds: (fields[3] as List).cast<String>(),
     );
   }
 

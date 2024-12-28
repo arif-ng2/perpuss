@@ -1,35 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:intl/intl.dart';
 import 'models/student.dart';
-import 'models/transaction.dart';
 import 'models/class_fund.dart';
+import 'models/monthly_report.dart';
+import 'models/payment.dart';
 import 'screens/student_list_screen.dart';
+import 'screens/monthly_report_screen.dart';
+import 'theme/app_theme.dart';
+import 'widgets/balance_card.dart';
+import 'widgets/add_payment_dialog.dart';
+import 'widgets/add_expense_dialog.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  
-  // Register Hive adapters
+
+  // Register adapters
   Hive.registerAdapter(StudentAdapter());
-  Hive.registerAdapter(TransactionAdapter());
-  Hive.registerAdapter(TransactionTypeAdapter());
   Hive.registerAdapter(ClassFundAdapter());
-  
+  Hive.registerAdapter(MonthlyReportAdapter());
+  Hive.registerAdapter(PaymentAdapter());
+  Hive.registerAdapter(PaymentTypeAdapter());
+
+  // Open boxes
   await Hive.openBox<Student>('students');
-  await Hive.openBox<Transaction>('transactions');
-  await Hive.openBox<ClassFund>('classFund');
-  
+  await Hive.openBox<ClassFund>('class_fund');
+  await Hive.openBox<MonthlyReport>('monthly_reports');
+  await Hive.openBox<Payment>('payments');
+
   // Initialize class fund if not exists
-  final classFundBox = Hive.box<ClassFund>('classFund');
+  final classFundBox = Hive.box<ClassFund>('class_fund');
   if (classFundBox.isEmpty) {
-    classFundBox.add(ClassFund(
-      lastUpdated: DateTime.now(),
-      description: 'Kas Kelas Semester 1',
-      targetAmount: 1000000,
-    ));
+    await classFundBox.put(
+      'current',
+      ClassFund(
+        balance: 0,
+        lastUpdated: DateTime.now(),
+        targetAmount: 0,
+        description: 'Dana Kelas',
+      ),
+    );
   }
-  
+
   runApp(const MyApp());
 }
 
@@ -39,12 +51,10 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Manajemen Keuangan Kelas',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-      ),
+      title: 'Cash Mee',
+      theme: AppTheme.lightTheme,
       home: const HomePage(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -57,56 +67,16 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late final Box<Student> _studentsBox;
-  late final Box<Transaction> _transactionsBox;
-  late final Box<ClassFund> _classFundBox;
+  final _studentsBox = Hive.box<Student>('students');
+  final _classFundBox = Hive.box<ClassFund>('class_fund');
+  final _monthlyReportsBox = Hive.box<MonthlyReport>('monthly_reports');
+  final _paymentsBox = Hive.box<Payment>('payments');
   
-  @override
-  void initState() {
-    super.initState();
-    _studentsBox = Hive.box('students');
-    _transactionsBox = Hive.box('transactions');
-    _classFundBox = Hive.box('classFund');
-  }
-
-  void _addTransaction(Transaction transaction) {
-    setState(() {
-      _transactionsBox.add(transaction);
-      
-      if (transaction.studentId != null) {
-        final student = _studentsBox.get(transaction.studentId);
-        if (student != null) {
-          student.balance += transaction.type == TransactionType.income 
-              ? transaction.amount 
-              : -transaction.amount;
-          student.transactionIds.add(transaction.id);
-          student.save();
-        }
-      }
-      
-      // Update class fund
-      final classFund = _classFundBox.getAt(0);
-      if (classFund != null) {
-        classFund.totalBalance += transaction.type == TransactionType.income 
-            ? transaction.amount 
-            : -transaction.amount;
-        classFund.lastUpdated = DateTime.now();
-        classFund.save();
-      }
-    });
-  }
-
-  void _addStudent(Student student) {
-    setState(() {
-      _studentsBox.add(student);
-    });
-  }
-
-  void _showAddStudentDialog() {
+  void _addStudent() async {
     final nameController = TextEditingController();
-    final idController = TextEditingController();
+    final studentIdController = TextEditingController();
 
-    showDialog(
+    final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Tambah Mahasiswa'),
@@ -115,378 +85,449 @@ class _HomePageState extends State<HomePage> {
           children: [
             TextField(
               controller: nameController,
-              decoration: const InputDecoration(labelText: 'Nama Mahasiswa'),
-            ),
-            TextField(
-              controller: idController,
-              decoration: const InputDecoration(labelText: 'NIM'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal'),
-          ),
-          TextButton(
-            onPressed: () {
-              _addStudent(Student(
-                name: nameController.text,
-                studentId: idController.text,
-              ));
-              Navigator.pop(context);
-            },
-            child: const Text('Simpan'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAddTransactionDialog([Student? student]) {
-    final descriptionController = TextEditingController();
-    final amountController = TextEditingController();
-    TransactionType selectedType = TransactionType.income;
-    Student? selectedStudent = student;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Tambah Transaksi'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (student == null)
-              DropdownButton<Student>(
-                value: selectedStudent,
-                hint: const Text('Pilih Mahasiswa'),
-                items: _studentsBox.values.map((student) {
-                  return DropdownMenuItem(
-                    value: student,
-                    child: Text('${student.name} (${student.studentId})'),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  setState(() {
-                    selectedStudent = value;
-                  });
-                },
+              decoration: const InputDecoration(
+                labelText: 'Nama Mahasiswa',
+                hintText: 'Masukkan nama mahasiswa',
               ),
-            DropdownButton<TransactionType>(
-              value: selectedType,
-              items: TransactionType.values.map((type) {
-                return DropdownMenuItem(
-                  value: type,
-                  child: Text(type == TransactionType.income ? 'Pemasukan' : 'Pengeluaran'),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    selectedType = value;
-                  });
-                }
-              },
+              textCapitalization: TextCapitalization.words,
             ),
+            const SizedBox(height: 16),
             TextField(
-              controller: descriptionController,
-              decoration: const InputDecoration(labelText: 'Deskripsi'),
-            ),
-            TextField(
-              controller: amountController,
-              decoration: const InputDecoration(labelText: 'Jumlah (Rp)'),
+              controller: studentIdController,
+              decoration: const InputDecoration(
+                labelText: 'NIM',
+                hintText: 'Masukkan NIM mahasiswa',
+              ),
               keyboardType: TextInputType.number,
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Batal'),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () {
-              if (selectedStudent != null) {
-                _addTransaction(Transaction(
-                  id: DateTime.now().toString(),
-                  date: DateTime.now(),
-                  description: descriptionController.text,
-                  amount: double.parse(amountController.text),
-                  type: selectedType,
-                  studentId: selectedStudent!.studentId,
-                ));
-                Navigator.pop(context);
+              if (nameController.text.isEmpty ||
+                  studentIdController.text.isEmpty) {
+                return;
               }
+              Navigator.pop(context, true);
             },
             child: const Text('Simpan'),
           ),
         ],
       ),
     );
+
+    if (result == true) {
+      final student = Student(
+        name: nameController.text,
+        studentId: studentIdController.text,
+        balance: 0,
+        transactionIds: [],
+      );
+
+      await _studentsBox.add(student);
+      setState(() {});
+    }
   }
 
-  void _showSetTargetDialog() {
-    final targetController = TextEditingController();
-    final descController = TextEditingController();
-    final classFund = _classFundBox.getAt(0);
-    
-    if (classFund != null) {
-      targetController.text = classFund.targetAmount.toString();
-      descController.text = classFund.description;
-    }
+  void _editStudent(Student student, int index) async {
+    final nameController = TextEditingController(text: student.name);
+    final studentIdController = TextEditingController(text: student.studentId);
 
-    showDialog(
+    final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Atur Target Kas'),
+        title: const Text('Edit Mahasiswa'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Nama Mahasiswa',
+                hintText: 'Masukkan nama mahasiswa',
+              ),
+              textCapitalization: TextCapitalization.words,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: studentIdController,
+              decoration: const InputDecoration(
+                labelText: 'NIM',
+                hintText: 'Masukkan NIM mahasiswa',
+              ),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (nameController.text.isEmpty ||
+                  studentIdController.text.isEmpty) {
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      final updatedStudent = Student(
+        name: nameController.text,
+        studentId: studentIdController.text,
+        balance: student.balance,
+        transactionIds: student.transactionIds,
+      );
+
+      await _studentsBox.putAt(index, updatedStudent);
+      setState(() {});
+    }
+  }
+
+  void _deleteStudent(int index) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus Mahasiswa'),
+        content: const Text(
+          'Apakah Anda yakin ingin menghapus mahasiswa ini? '
+          'Semua data transaksi akan ikut terhapus.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      final student = _studentsBox.getAt(index);
+      if (student != null) {
+        // Hapus semua pembayaran terkait
+        final payments = _paymentsBox.values
+            .where((p) => p.studentId == student.studentId)
+            .toList();
+        for (final payment in payments) {
+          await payment.delete();
+        }
+      }
+      await _studentsBox.deleteAt(index);
+      setState(() {});
+    }
+  }
+
+  void _editClassFund() async {
+    final currentFund = _classFundBox.get('current')!;
+    final targetController = TextEditingController(
+      text: currentFund.targetAmount.toString(),
+    );
+    final descController = TextEditingController(
+      text: currentFund.description,
+    );
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Target Dana'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: targetController,
               decoration: const InputDecoration(
-                labelText: 'Target Kas (Rp)',
-                hintText: 'Contoh: 1000000',
+                labelText: 'Target Dana',
+                hintText: 'Masukkan target dana',
+                prefixText: 'Rp ',
               ),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 16),
             TextField(
               controller: descController,
               decoration: const InputDecoration(
-                labelText: 'Keterangan',
-                hintText: 'Contoh: Kas Kelas Semester 1',
+                labelText: 'Deskripsi',
+                hintText: 'Masukkan deskripsi',
               ),
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Batal'),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () {
-              if (classFund != null) {
-                classFund.targetAmount = double.tryParse(targetController.text) ?? 0;
-                classFund.description = descController.text;
-                classFund.save();
+              if (targetController.text.isEmpty || descController.text.isEmpty) {
+                return;
               }
-              Navigator.pop(context);
+              Navigator.pop(context, true);
             },
             child: const Text('Simpan'),
           ),
         ],
       ),
     );
+
+    if (result == true) {
+      final updatedFund = ClassFund(
+        balance: currentFund.balance,
+        lastUpdated: currentFund.lastUpdated,
+        targetAmount: double.parse(targetController.text.replaceAll(',', '')),
+        description: descController.text,
+      );
+
+      await _classFundBox.put('current', updatedFund);
+      setState(() {});
+    }
+  }
+
+  void _editMonthlyReport(MonthlyReport report) async {
+    final notesController = TextEditingController(text: report.notes);
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Catatan'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              report.formattedMonth,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: notesController,
+              decoration: const InputDecoration(
+                labelText: 'Catatan',
+                hintText: 'Masukkan catatan untuk bulan ini',
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      report.notes = notesController.text;
+      await report.save();
+      setState(() {});
+    }
+  }
+
+  void _addPayment(Student student) async {
+    final payment = await showDialog<Payment>(
+      context: context,
+      builder: (context) => AddPaymentDialog(
+        studentId: student.studentId,
+        studentName: student.name,
+      ),
+    );
+
+    if (payment != null) {
+      // Simpan pembayaran
+      await _paymentsBox.add(payment);
+
+      // Update saldo mahasiswa
+      student.balance += payment.amount;
+      await student.save();
+
+      // Update saldo kelas
+      final classFund = _classFundBox.get('current')!;
+      classFund.balance += payment.amount;
+      classFund.lastUpdated = DateTime.now();
+      await classFund.save();
+
+      // Update atau buat laporan bulanan
+      final month = DateTime(payment.date.year, payment.date.month);
+      final report = _monthlyReportsBox.values.firstWhere(
+        (r) => r.month.year == month.year && r.month.month == month.month,
+        orElse: () => MonthlyReport(
+          month: month,
+          totalIncome: 0,
+          totalExpense: 0,
+          balance: 0,
+        ),
+      );
+
+      report.totalIncome += payment.amount;
+      report.balance = report.totalIncome - report.totalExpense;
+      
+      if (!report.isInBox) {
+        await _monthlyReportsBox.add(report);
+      } else {
+        await report.save();
+      }
+
+      setState(() {});
+    }
+  }
+
+  void _addExpense() async {
+    final expense = await showDialog<Payment>(
+      context: context,
+      builder: (context) => const AddExpenseDialog(),
+    );
+
+    if (expense != null) {
+      // Simpan pengeluaran
+      await _paymentsBox.add(expense);
+
+      // Update saldo kelas
+      final classFund = _classFundBox.get('current')!;
+      classFund.balance += expense.amount; // amount sudah negatif
+      classFund.lastUpdated = DateTime.now();
+      await classFund.save();
+
+      // Update atau buat laporan bulanan
+      final month = DateTime(expense.date.year, expense.date.month);
+      final report = _monthlyReportsBox.values.firstWhere(
+        (r) => r.month.year == month.year && r.month.month == month.month,
+        orElse: () => MonthlyReport(
+          month: month,
+          totalIncome: 0,
+          totalExpense: 0,
+          balance: 0,
+        ),
+      );
+
+      report.totalExpense += -expense.amount; // amount negatif, jadi dikali -1
+      report.balance = report.totalIncome - report.totalExpense;
+      
+      if (!report.isInBox) {
+        await _monthlyReportsBox.add(report);
+      } else {
+        await report.save();
+      }
+
+      setState(() {});
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Manajemen Keuangan Kelas'),
+          title: const Text('Cash Mee'),
+          actions: [
+            IconButton(
+              onPressed: _addStudent,
+              icon: const Icon(Icons.person_add),
+              tooltip: 'Tambah Mahasiswa',
+            ),
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Ringkasan'),
               Tab(text: 'Mahasiswa'),
+              Tab(text: 'Pembukuan'),
             ],
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.person_add),
-              onPressed: _showAddStudentDialog,
-            ),
-            IconButton(
-              icon: const Icon(Icons.settings),
-              onPressed: _showSetTargetDialog,
-            ),
-          ],
         ),
         body: TabBarView(
           children: [
             // Tab Ringkasan
-            ValueListenableBuilder(
-              valueListenable: _classFundBox.listenable(),
-              builder: (context, Box<ClassFund> box, _) {
-                final classFund = box.getAt(0);
-                if (classFund == null) return const SizedBox();
-                
-                final progress = classFund.targetAmount > 0 
-                    ? (classFund.totalBalance / classFund.targetAmount).clamp(0.0, 1.0)
-                    : 0.0;
-                
-                return Column(
-                  children: [
-                    Card(
-                      margin: const EdgeInsets.all(16),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      classFund.description,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Terakhir diperbarui: ${DateFormat('dd/MM/yyyy HH:mm').format(classFund.lastUpdated)}',
-                                      style: Theme.of(context).textTheme.bodySmall,
-                                    ),
-                                  ],
-                                ),
-                                Text(
-                                  NumberFormat.currency(
-                                    locale: 'id',
-                                    symbol: 'Rp ',
-                                    decimalDigits: 0,
-                                  ).format(classFund.totalBalance),
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: classFund.totalBalance >= 0 
-                                        ? Colors.green 
-                                        : Colors.red,
-                                  ),
-                                ),
-                              ],
+            SingleChildScrollView(
+              child: Column(
+                children: [
+                  ValueListenableBuilder(
+                    valueListenable: _classFundBox.listenable(),
+                    builder: (context, box, _) {
+                      final classFund = box.get('current')!;
+                      return Column(
+                        children: [
+                          BalanceCard(
+                            title: classFund.description,
+                            balance: classFund.balance,
+                            targetAmount: classFund.targetAmount,
+                            lastUpdated: classFund.lastUpdated,
+                            onTap: _editClassFund,
+                          ),
+                          const SizedBox(height: 16),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: FilledButton.icon(
+                              onPressed: _addExpense,
+                              icon: const Icon(Icons.remove_circle_outline),
+                              label: const Text('Tambah Pengeluaran'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Theme.of(context).colorScheme.error,
+                              ),
                             ),
-                            const SizedBox(height: 8),
-                            if (classFund.targetAmount > 0) ...[
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Target: ${NumberFormat.currency(
-                                            locale: 'id',
-                                            symbol: 'Rp ',
-                                            decimalDigits: 0,
-                                          ).format(classFund.targetAmount)}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        LinearProgressIndicator(
-                                          value: progress,
-                                          backgroundColor: Colors.grey[200],
-                                          valueColor: AlwaysStoppedAnimation<Color>(
-                                            progress >= 1.0 ? Colors.green : Colors.blue,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${(progress * 100).toStringAsFixed(1)}% tercapai',
-                                          style: Theme.of(context).textTheme.bodySmall,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: ValueListenableBuilder(
-                        valueListenable: _transactionsBox.listenable(),
-                        builder: (context, Box<Transaction> box, _) {
-                          final transactions = box.values.toList()
-                            ..sort((a, b) => b.date.compareTo(a.date));
-                            
-                          if (transactions.isEmpty) {
-                            return const Center(
-                              child: Text(
-                                'Belum ada transaksi',
-                                style: TextStyle(
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            );
-                          }
-                          
-                          return ListView.builder(
-                            itemCount: transactions.length,
-                            itemBuilder: (context, index) {
-                              final transaction = transactions[index];
-                              final student = transaction.studentId != null 
-                                  ? _studentsBox.get(transaction.studentId)
-                                  : null;
-                                  
-                              return Card(
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 4,
-                                ),
-                                child: ListTile(
-                                  leading: Icon(
-                                    transaction.type == TransactionType.income
-                                        ? Icons.arrow_downward
-                                        : Icons.arrow_upward,
-                                    color: transaction.type == TransactionType.income
-                                        ? Colors.green
-                                        : Colors.red,
-                                  ),
-                                  title: Text(transaction.description),
-                                  subtitle: Text(
-                                    '${DateFormat('dd/MM/yyyy HH:mm').format(transaction.date)}'
-                                    '${student != null ? '\n${student.name}' : ''}'
-                                  ),
-                                  trailing: Text(
-                                    NumberFormat.currency(
-                                      locale: 'id',
-                                      symbol: 'Rp ',
-                                      decimalDigits: 0,
-                                    ).format(transaction.amount),
-                                    style: TextStyle(
-                                      color: transaction.type == TransactionType.income
-                                          ? Colors.green
-                                          : Colors.red,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                );
-              },
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
             // Tab Mahasiswa
             ValueListenableBuilder(
               valueListenable: _studentsBox.listenable(),
-              builder: (context, Box<Student> box, _) {
+              builder: (context, box, _) {
                 final students = box.values.toList();
                 return StudentListScreen(
                   students: students,
-                  onAddPayment: (student) => _showAddTransactionDialog(student),
+                  onEditStudent: (student) =>
+                      _editStudent(student, students.indexOf(student)),
+                  onDeleteStudent: (student) =>
+                      _deleteStudent(students.indexOf(student)),
+                  onAddPayment: _addPayment,
+                );
+              },
+            ),
+            // Tab Pembukuan
+            ValueListenableBuilder(
+              valueListenable: _monthlyReportsBox.listenable(),
+              builder: (context, box, _) {
+                final reports = box.values.toList()
+                  ..sort((a, b) => b.month.compareTo(a.month));
+                return MonthlyReportScreen(
+                  reports: reports,
+                  onEditReport: _editMonthlyReport,
                 );
               },
             ),
           ],
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => _showAddTransactionDialog(),
-          child: const Icon(Icons.add),
         ),
       ),
     );

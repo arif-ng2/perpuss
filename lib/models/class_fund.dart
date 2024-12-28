@@ -5,7 +5,7 @@ part 'class_fund.g.dart';
 @HiveType(typeId: 3)
 class ClassFund extends HiveObject {
   @HiveField(0)
-  double totalBalance;
+  double balance;
 
   @HiveField(1)
   DateTime lastUpdated;
@@ -17,9 +17,9 @@ class ClassFund extends HiveObject {
   String description;
 
   ClassFund({
-    this.totalBalance = 0,
+    required this.balance,
     required this.lastUpdated,
-    this.targetAmount = 0,
-    this.description = '',
+    required this.targetAmount,
+    required this.description,
   });
 } 
