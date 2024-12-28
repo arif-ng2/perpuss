@@ -1,12 +1,35 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'dart:convert';
+import 'package:intl/intl.dart';
+import 'models/student.dart';
+import 'models/transaction.dart';
+import 'models/class_fund.dart';
+import 'screens/student_list_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  await Hive.openBox('appData');
+  
+  // Register Hive adapters
+  Hive.registerAdapter(StudentAdapter());
+  Hive.registerAdapter(TransactionAdapter());
+  Hive.registerAdapter(TransactionTypeAdapter());
+  Hive.registerAdapter(ClassFundAdapter());
+  
+  await Hive.openBox<Student>('students');
+  await Hive.openBox<Transaction>('transactions');
+  await Hive.openBox<ClassFund>('classFund');
+  
+  // Initialize class fund if not exists
+  final classFundBox = Hive.box<ClassFund>('classFund');
+  if (classFundBox.isEmpty) {
+    classFundBox.add(ClassFund(
+      lastUpdated: DateTime.now(),
+      description: 'Kas Kelas Semester 1',
+      targetAmount: 1000000,
+    ));
+  }
+  
   runApp(const MyApp());
 }
 
@@ -16,48 +39,14 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Manajemen Bakol',
+      title: 'Manajemen Keuangan Kelas',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
       home: const HomePage(),
     );
   }
-}
-
-class MenuItem {
-  final String name;
-  final int price;
-  final IconData icon;
-
-  MenuItem({required this.name, required this.price, this.icon = Icons.fastfood});
-}
-
-class OrderItem {
-  final String name;
-  final int price;
-  final int quantity;
-
-  OrderItem({
-    required this.name,
-    required this.price,
-    required this.quantity,
-  });
-
-  int get total => price * quantity;
-}
-
-class OrderHistory {
-  final DateTime timestamp;
-  final List<OrderItem> items;
-  final int total;
-
-  OrderHistory({
-    required this.timestamp,
-    required this.items,
-    required this.total,
-  });
 }
 
 class HomePage extends StatefulWidget {
@@ -68,578 +57,223 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late final Box _box;
-  final List<MenuItem> _menuItems = [];
-  final Map<String, int> _orderCount = {};
-  final List<OrderHistory> _orderHistory = [];
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _priceController = TextEditingController();
+  late final Box<Student> _studentsBox;
+  late final Box<Transaction> _transactionsBox;
+  late final Box<ClassFund> _classFundBox;
   
   @override
   void initState() {
     super.initState();
-    _box = Hive.box('appData');
-    _loadData();
+    _studentsBox = Hive.box('students');
+    _transactionsBox = Hive.box('transactions');
+    _classFundBox = Hive.box('classFund');
   }
 
-  void _loadData() {
-    // Load menu items
-    final menuItemsJson = _box.get('menuItems');
-    if (menuItemsJson != null) {
-      final List<dynamic> items = json.decode(menuItemsJson);
-      _menuItems.clear();
-      for (var item in items) {
-        _menuItems.add(MenuItem(
-          name: item['name'],
-          price: item['price'],
-        ));
-      }
-    }
-
-    // Load order history
-    final historyJson = _box.get('orderHistory');
-    if (historyJson != null) {
-      final List<dynamic> history = json.decode(historyJson);
-      _orderHistory.clear();
-      for (var order in history) {
-        final List<OrderItem> items = [];
-        for (var item in order['items']) {
-          items.add(OrderItem(
-            name: item['name'],
-            price: item['price'],
-            quantity: item['quantity'],
-          ));
-        }
-        _orderHistory.add(OrderHistory(
-          timestamp: DateTime.parse(order['timestamp']),
-          items: items,
-          total: order['total'],
-        ));
-      }
-    }
-  }
-
-  void _saveData() {
-    // Save menu items
-    final menuItemsJson = json.encode(_menuItems.map((item) => {
-      'name': item.name,
-      'price': item.price,
-    }).toList());
-    _box.put('menuItems', menuItemsJson);
-
-    // Save order history
-    final historyJson = json.encode(_orderHistory.map((order) => {
-      'timestamp': order.timestamp.toIso8601String(),
-      'items': order.items.map((item) => {
-        'name': item.name,
-        'price': item.price,
-        'quantity': item.quantity,
-      }).toList(),
-      'total': order.total,
-    }).toList());
-    _box.put('orderHistory', historyJson);
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _priceController.dispose();
-    super.dispose();
-  }
-
-  int _getItemCount(String itemName) {
-    return _orderCount[itemName] ?? 0;
-  }
-
-  void _addItem(String itemName) {
+  void _addTransaction(Transaction transaction) {
     setState(() {
-      _orderCount[itemName] = _getItemCount(itemName) + 1;
+      _transactionsBox.add(transaction);
+      
+      if (transaction.studentId != null) {
+        final student = _studentsBox.get(transaction.studentId);
+        if (student != null) {
+          student.balance += transaction.type == TransactionType.income 
+              ? transaction.amount 
+              : -transaction.amount;
+          student.transactionIds.add(transaction.id);
+          student.save();
+        }
+      }
+      
+      // Update class fund
+      final classFund = _classFundBox.getAt(0);
+      if (classFund != null) {
+        classFund.totalBalance += transaction.type == TransactionType.income 
+            ? transaction.amount 
+            : -transaction.amount;
+        classFund.lastUpdated = DateTime.now();
+        classFund.save();
+      }
     });
   }
 
-  void _removeItem(String itemName) {
-    if (_getItemCount(itemName) > 0) {
-      setState(() {
-        _orderCount[itemName] = _getItemCount(itemName) - 1;
-      });
-    }
+  void _addStudent(Student student) {
+    setState(() {
+      _studentsBox.add(student);
+    });
   }
 
-  void _addMenuItem() {
+  void _showAddStudentDialog() {
+    final nameController = TextEditingController();
+    final idController = TextEditingController();
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Tambah Menu Baru'),
-        content: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nama Menu',
-                  hintText: 'Masukkan nama menu',
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Nama menu tidak boleh kosong';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _priceController,
-                decoration: const InputDecoration(
-                  labelText: 'Harga',
-                  hintText: 'Masukkan harga',
-                  prefixText: 'Rp ',
-                ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Harga tidak boleh kosong';
-                  }
-                  if (int.tryParse(value) == null) {
-                    return 'Harga harus berupa angka';
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
+        title: const Text('Tambah Mahasiswa'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: 'Nama Mahasiswa'),
+            ),
+            TextField(
+              controller: idController,
+              decoration: const InputDecoration(labelText: 'NIM'),
+            ),
+          ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Batal'),
           ),
-          ElevatedButton(
+          TextButton(
             onPressed: () {
-              if (_formKey.currentState!.validate()) {
-                setState(() {
-                  _menuItems.add(
-                    MenuItem(
-                      name: _nameController.text,
-                      price: int.parse(_priceController.text),
-                    ),
+              _addStudent(Student(
+                name: nameController.text,
+                studentId: idController.text,
+              ));
+              Navigator.pop(context);
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddTransactionDialog([Student? student]) {
+    final descriptionController = TextEditingController();
+    final amountController = TextEditingController();
+    TransactionType selectedType = TransactionType.income;
+    Student? selectedStudent = student;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tambah Transaksi'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (student == null)
+              DropdownButton<Student>(
+                value: selectedStudent,
+                hint: const Text('Pilih Mahasiswa'),
+                items: _studentsBox.values.map((student) {
+                  return DropdownMenuItem(
+                    value: student,
+                    child: Text('${student.name} (${student.studentId})'),
                   );
-                });
-                _saveData(); // Save after adding menu item
-                _nameController.clear();
-                _priceController.clear();
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    selectedStudent = value;
+                  });
+                },
+              ),
+            DropdownButton<TransactionType>(
+              value: selectedType,
+              items: TransactionType.values.map((type) {
+                return DropdownMenuItem(
+                  value: type,
+                  child: Text(type == TransactionType.income ? 'Pemasukan' : 'Pengeluaran'),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    selectedType = value;
+                  });
+                }
+              },
+            ),
+            TextField(
+              controller: descriptionController,
+              decoration: const InputDecoration(labelText: 'Deskripsi'),
+            ),
+            TextField(
+              controller: amountController,
+              decoration: const InputDecoration(labelText: 'Jumlah (Rp)'),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (selectedStudent != null) {
+                _addTransaction(Transaction(
+                  id: DateTime.now().toString(),
+                  date: DateTime.now(),
+                  description: descriptionController.text,
+                  amount: double.parse(amountController.text),
+                  type: selectedType,
+                  studentId: selectedStudent!.studentId,
+                ));
                 Navigator.pop(context);
               }
             },
-            child: const Text('Tambah'),
+            child: const Text('Simpan'),
           ),
         ],
       ),
     );
   }
 
-  void _showOrderSummary() {
-    int totalIncome = 0;
-    final Map<String, int> menuOrderCount = {};
+  void _showSetTargetDialog() {
+    final targetController = TextEditingController();
+    final descController = TextEditingController();
+    final classFund = _classFundBox.getAt(0);
     
-    for (var order in _orderHistory) {
-      totalIncome += order.total;
-      for (var item in order.items) {
-        menuOrderCount[item.name] = (menuOrderCount[item.name] ?? 0) + item.quantity;
-      }
+    if (classFund != null) {
+      targetController.text = classFund.targetAmount.toString();
+      descController.text = classFund.description;
     }
 
-    final sortedMenus = menuOrderCount.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: 400,
-            maxHeight: 500,
-          ),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Ringkasan Pesanan',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (menuOrderCount.isEmpty)
-                const Center(
-                  child: Text(
-                    'Belum ada data pesanan',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                )
-              else
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Menu Terlaris:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...sortedMenus.map((entry) => Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                Expanded(
-                                  child: Text(entry.key),
-                                ),
-                                  Text(
-                                    '${entry.value}x',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )),
-                    const Divider(),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Total Pendapatan:',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          'Rp ${totalIncome.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Jumlah Transaksi:',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          '${_orderHistory.length}x',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                      ),
-                    ),
-                ),
-            ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showOrderHistory() {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: 600,
-            maxHeight: 500,
-          ),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Riwayat Pesanan',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        if (_orderHistory.isNotEmpty)
-                          IconButton(
-                            onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: const Text('Hapus Semua Riwayat'),
-                                  content: const Text('Apakah Anda yakin ingin menghapus semua riwayat pesanan?'),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('Batal'),
-                                    ),
-                                    ElevatedButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          _orderHistory.clear();
-                                        });
-                                        _saveData(); // Simpan perubahan setelah menghapus
-                                        Navigator.pop(context); // Tutup dialog konfirmasi
-                                        Navigator.pop(context); // Tutup dialog riwayat
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Semua riwayat pesanan telah dihapus'),
-                                            backgroundColor: Colors.orange,
-                                          ),
-                                        );
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.red,
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      child: const Text('Hapus'),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.delete_forever),
-                            color: Colors.red,
-                            tooltip: 'Hapus Semua Riwayat',
-                          ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                if (_orderHistory.isEmpty)
-                  const Center(
-                    child: Text(
-                      'Belum ada riwayat pesanan',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  )
-                else
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _orderHistory.length,
-                        itemBuilder: (context, index) {
-                          final order = _orderHistory[index];
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ExpansionTile(
-                              title: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      'Pesanan ${_orderHistory.length - index}',
-                                      style: const TextStyle(fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    onPressed: () {
-                                      showDialog(
-                                        context: context,
-                                        builder: (context) => AlertDialog(
-                                          title: const Text('Hapus Pesanan'),
-                                          content: const Text('Apakah Anda yakin ingin menghapus pesanan ini?'),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () => Navigator.pop(context),
-                                              child: const Text('Batal'),
-                                            ),
-                                            ElevatedButton(
-                                              onPressed: () {
-                                                setState(() {
-                                                  _orderHistory.removeAt(index);
-                                                });
-                                                _saveData(); // Simpan perubahan setelah menghapus
-                                                Navigator.pop(context);
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text('Pesanan telah dihapus'),
-                                                    backgroundColor: Colors.orange,
-                                                  ),
-                                                );
-                                                // Tutup dialog riwayat jika tidak ada pesanan lagi
-                                                if (_orderHistory.isEmpty) {
-                                                  Navigator.pop(context);
-                                                }
-                                              },
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.red,
-                                                foregroundColor: Colors.white,
-                                              ),
-                                              child: const Text('Hapus'),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    },
-                                    icon: const Icon(Icons.delete_outline),
-                                    color: Colors.red,
-                                    tooltip: 'Hapus Pesanan',
-                                  ),
-                                ],
-                              ),
-                              subtitle: Text(
-                                'Total: Rp ${order.total.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}\n'
-                                '${order.timestamp.day}/${order.timestamp.month}/${order.timestamp.year} '
-                                '${order.timestamp.hour}:${order.timestamp.minute.toString().padLeft(2, '0')}',
-                              ),
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Column(
-                                    children: order.items.map((item) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text('${item.name} x${item.quantity}'),
-                                          Text(
-                                            'Rp ${item.total.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
-                                            style: const TextStyle(fontWeight: FontWeight.bold),
-                                          ),
-                                        ],
-                                      ),
-                                    )).toList(),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  int _calculateTotal() {
-    int total = 0;
-    _orderCount.forEach((itemName, quantity) {
-      final menuItem = _menuItems.firstWhere(
-        (item) => item.name == itemName,
-        orElse: () => MenuItem(name: '', price: 0),
-      );
-      total += menuItem.price * quantity;
-    });
-    return total;
-  }
-
-  void _saveOrder() {
-    final List<OrderItem> items = [];
-    _orderCount.forEach((itemName, quantity) {
-      if (quantity > 0) {
-        final menuItem = _menuItems.firstWhere(
-          (item) => item.name == itemName,
-          orElse: () => MenuItem(name: '', price: 0),
-        );
-        items.add(OrderItem(
-          name: itemName,
-          price: menuItem.price,
-          quantity: quantity,
-        ));
-      }
-    });
-
-    if (items.isNotEmpty) {
-      setState(() {
-        _orderHistory.add(OrderHistory(
-          timestamp: DateTime.now(),
-          items: items,
-          total: _calculateTotal(),
-        ));
-        _orderCount.clear();
-      });
-      _saveData(); // Save after adding order
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pesanan berhasil dicatat!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  }
-
-  void _showExitConfirmation() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Keluar Aplikasi'),
-        content: const Text('Apakah Anda yakin ingin keluar dari aplikasi?'),
+        title: const Text('Atur Target Kas'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: targetController,
+              decoration: const InputDecoration(
+                labelText: 'Target Kas (Rp)',
+                hintText: 'Contoh: 1000000',
+              ),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: descController,
+              decoration: const InputDecoration(
+                labelText: 'Keterangan',
+                hintText: 'Contoh: Kas Kelas Semester 1',
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Batal'),
           ),
-          ElevatedButton(
+          TextButton(
             onPressed: () {
-              SystemNavigator.pop(); // Ini akan benar-benar menutup aplikasi
+              if (classFund != null) {
+                classFund.targetAmount = double.tryParse(targetController.text) ?? 0;
+                classFund.description = descController.text;
+                classFund.save();
+              }
+              Navigator.pop(context);
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Keluar'),
+            child: const Text('Simpan'),
           ),
         ],
       ),
@@ -648,447 +282,211 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.shopping_basket_rounded,
-                color: Theme.of(context).colorScheme.primary,
-                size: 24,
-              ),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Manajemen Keuangan Kelas'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Ringkasan'),
+              Tab(text: 'Mahasiswa'),
+            ],
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.person_add),
+              onPressed: _showAddStudentDialog,
             ),
-            const SizedBox(width: 12),
-            const Text('Manajemen Bakol'),
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: _showSetTargetDialog,
+            ),
           ],
         ),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Colors.white,
-        elevation: 2,
-        actions: [
-          IconButton(
-            onPressed: _showOrderSummary,
-            icon: const Icon(Icons.bar_chart_rounded),
-            tooltip: 'Statistik Pesanan',
-          ),
-          IconButton(
-            onPressed: _showOrderHistory,
-            icon: const Icon(Icons.receipt_long_rounded),
-            tooltip: 'Riwayat Pesanan',
-          ),
-          IconButton(
-            onPressed: _showExitConfirmation,
-            icon: const Icon(Icons.exit_to_app_rounded),
-            tooltip: 'Keluar Aplikasi',
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16.0),
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.all(24.0),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Theme.of(context).colorScheme.primary,
-                        Theme.of(context).colorScheme.primaryContainer,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(26),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.store_rounded,
-                        size: 48,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Manajemen Bakol',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withAlpha(51),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Text(
-                          'by randu kumbolo',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.white,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                
-                // Menu List Header
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.restaurant_menu_rounded,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Daftar Menu',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        onPressed: _addMenuItem,
-                        icon: const Icon(Icons.add_circle_rounded),
-                        color: Theme.of(context).colorScheme.primary,
-                        tooltip: 'Tambah Menu',
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                if (_menuItems.isEmpty)
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.no_meals_rounded,
-                          size: 64,
-                          color: Colors.grey[400],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Belum ada menu.\nSilakan tambahkan menu baru.',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontStyle: FontStyle.italic,
-                            color: Colors.grey[600],
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  ...(_menuItems.map((item) => _buildMenuItemWithCounter(
-                    item.name,
-                    'Rp ${item.price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
-                    Icons.restaurant_rounded,
-                  ))),
-              ],
-            ),
-          ),
-          // Total Panel
-          Container(
-            padding: const EdgeInsets.all(20.0),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(26),
-                  blurRadius: 10,
-                  offset: const Offset(0, -5),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.shopping_cart_rounded,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Total Pesanan:',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      'Rp ${_calculateTotal().toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton.icon(
-                    onPressed: _orderCount.isEmpty ? null : _saveOrder,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: const Icon(Icons.save_rounded),
-                    label: const Text(
-                      'Catat Pesanan',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMenuItemWithCounter(String title, String price, IconData icon) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12.0),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
+        body: TabBarView(
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withAlpha(77),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                size: 32,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          title,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Hapus Menu'),
-                              content: Text('Apakah Anda yakin ingin menghapus menu "$title"?'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('Batal'),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _menuItems.removeWhere((item) => item.name == title);
-                                      _orderCount.remove(title);
-                                    });
-                                    _saveData(); // Save after removing menu item
-                                    Navigator.pop(context);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Menu telah dihapus'),
-                                        backgroundColor: Colors.orange,
+            // Tab Ringkasan
+            ValueListenableBuilder(
+              valueListenable: _classFundBox.listenable(),
+              builder: (context, Box<ClassFund> box, _) {
+                final classFund = box.getAt(0);
+                if (classFund == null) return const SizedBox();
+                
+                final progress = classFund.targetAmount > 0 
+                    ? (classFund.totalBalance / classFund.targetAmount).clamp(0.0, 1.0)
+                    : 0.0;
+                
+                return Column(
+                  children: [
+                    Card(
+                      margin: const EdgeInsets.all(16),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      classFund.description,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
                                       ),
-                                    );
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                    foregroundColor: Colors.white,
+                                    ),
+                                    Text(
+                                      'Terakhir diperbarui: ${DateFormat('dd/MM/yyyy HH:mm').format(classFund.lastUpdated)}',
+                                      style: Theme.of(context).textTheme.bodySmall,
+                                    ),
+                                  ],
+                                ),
+                                Text(
+                                  NumberFormat.currency(
+                                    locale: 'id',
+                                    symbol: 'Rp ',
+                                    decimalDigits: 0,
+                                  ).format(classFund.totalBalance),
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: classFund.totalBalance >= 0 
+                                        ? Colors.green 
+                                        : Colors.red,
                                   ),
-                                  child: const Text('Hapus'),
                                 ),
                               ],
                             ),
+                            const SizedBox(height: 8),
+                            if (classFund.targetAmount > 0) ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Target: ${NumberFormat.currency(
+                                            locale: 'id',
+                                            symbol: 'Rp ',
+                                            decimalDigits: 0,
+                                          ).format(classFund.targetAmount)}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        LinearProgressIndicator(
+                                          value: progress,
+                                          backgroundColor: Colors.grey[200],
+                                          valueColor: AlwaysStoppedAnimation<Color>(
+                                            progress >= 1.0 ? Colors.green : Colors.blue,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '${(progress * 100).toStringAsFixed(1)}% tercapai',
+                                          style: Theme.of(context).textTheme.bodySmall,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: ValueListenableBuilder(
+                        valueListenable: _transactionsBox.listenable(),
+                        builder: (context, Box<Transaction> box, _) {
+                          final transactions = box.values.toList()
+                            ..sort((a, b) => b.date.compareTo(a.date));
+                            
+                          if (transactions.isEmpty) {
+                            return const Center(
+                              child: Text(
+                                'Belum ada transaksi',
+                                style: TextStyle(
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            );
+                          }
+                          
+                          return ListView.builder(
+                            itemCount: transactions.length,
+                            itemBuilder: (context, index) {
+                              final transaction = transactions[index];
+                              final student = transaction.studentId != null 
+                                  ? _studentsBox.get(transaction.studentId)
+                                  : null;
+                                  
+                              return Card(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 4,
+                                ),
+                                child: ListTile(
+                                  leading: Icon(
+                                    transaction.type == TransactionType.income
+                                        ? Icons.arrow_downward
+                                        : Icons.arrow_upward,
+                                    color: transaction.type == TransactionType.income
+                                        ? Colors.green
+                                        : Colors.red,
+                                  ),
+                                  title: Text(transaction.description),
+                                  subtitle: Text(
+                                    '${DateFormat('dd/MM/yyyy HH:mm').format(transaction.date)}'
+                                    '${student != null ? '\n${student.name}' : ''}'
+                                  ),
+                                  trailing: Text(
+                                    NumberFormat.currency(
+                                      locale: 'id',
+                                      symbol: 'Rp ',
+                                      decimalDigits: 0,
+                                    ).format(transaction.amount),
+                                    style: TextStyle(
+                                      color: transaction.type == TransactionType.income
+                                          ? Colors.green
+                                          : Colors.red,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           );
                         },
-                        icon: const Icon(Icons.delete_rounded),
-                        color: Colors.red,
-                        tooltip: 'Hapus Menu',
-                      ),
-                    ],
-                  ),
-                  Text(
-                    price,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.secondary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withAlpha(77),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => _removeItem(title),
-                    icon: const Icon(Icons.remove_rounded),
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(
-                      _getItemCount(title).toString(),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                  IconButton(
-                    onPressed: () => _addItem(title),
-                    icon: const Icon(Icons.add_rounded),
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class ExitScreen extends StatelessWidget {
-  const ExitScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Theme.of(context).colorScheme.primary,
-              Theme.of(context).colorScheme.primaryContainer,
-            ],
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.waving_hand_rounded,
-              size: 100,
-              color: Colors.white,
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Terima Kasih!',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Sampai jumpa kembali',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 48),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const HomePage(),
-                  ),
+                  ],
                 );
               },
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Kembali ke Aplikasi'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.red,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
+            ),
+            // Tab Mahasiswa
+            ValueListenableBuilder(
+              valueListenable: _studentsBox.listenable(),
+              builder: (context, Box<Student> box, _) {
+                final students = box.values.toList();
+                return StudentListScreen(
+                  students: students,
+                  onAddPayment: (student) => _showAddTransactionDialog(student),
+                );
+              },
             ),
           ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => _showAddTransactionDialog(),
+          child: const Icon(Icons.add),
         ),
       ),
     );

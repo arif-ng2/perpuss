@@ -1,63 +1,41 @@
-import 'menu_item.dart';
+import 'package:hive/hive.dart';
 
-class Transaction {
+part 'transaction.g.dart';
+
+@HiveType(typeId: 0)
+enum TransactionType {
+  @HiveField(0)
+  income,
+  @HiveField(1)
+  expense
+}
+
+@HiveType(typeId: 2)
+class Transaction extends HiveObject {
+  @HiveField(0)
   final String id;
+
+  @HiveField(1)
   final DateTime date;
-  final List<OrderItem> items;
-  final double totalAmount;
+
+  @HiveField(2)
+  final String description;
+
+  @HiveField(3)
+  final double amount;
+
+  @HiveField(4)
+  final TransactionType type;
+
+  @HiveField(5)
+  final String? studentId;
 
   Transaction({
     required this.id,
     required this.date,
-    required this.items,
-    required this.totalAmount,
+    required this.description,
+    required this.amount,
+    required this.type,
+    this.studentId,
   });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'date': date.toIso8601String(),
-      'items': items.map((item) => item.toJson()).toList(),
-      'totalAmount': totalAmount,
-    };
-  }
-
-  factory Transaction.fromJson(Map<String, dynamic> json) {
-    return Transaction(
-      id: json['id'],
-      date: DateTime.parse(json['date']),
-      items: (json['items'] as List)
-          .map((item) => OrderItem.fromJson(item))
-          .toList(),
-      totalAmount: json['totalAmount'],
-    );
-  }
-}
-
-class OrderItem {
-  final MenuItem menuItem;
-  final int quantity;
-  final double subtotal;
-
-  OrderItem({
-    required this.menuItem,
-    required this.quantity,
-    required this.subtotal,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'menuItem': menuItem.toJson(),
-      'quantity': quantity,
-      'subtotal': subtotal,
-    };
-  }
-
-  factory OrderItem.fromJson(Map<String, dynamic> json) {
-    return OrderItem(
-      menuItem: MenuItem.fromJson(json['menuItem']),
-      quantity: json['quantity'],
-      subtotal: json['subtotal'],
-    );
-  }
 } 
