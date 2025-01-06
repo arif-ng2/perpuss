@@ -4,8 +4,14 @@ import 'dart:convert';
 import '../models/book_model.dart';
 
 class BookProvider with ChangeNotifier {
-  final List<BookModel> _books = [];
+  List<BookModel> _books = [];
   List<BookModel> get books => _books;
+  bool _isLoading = false;
+  bool get isLoading => _isLoading;
+
+  BookProvider() {
+    // Inisialisasi tanpa memanggil loadBooks langsung
+  }
 
   Future<void> addBook(BookModel book) async {
     _books.add(book);
@@ -35,15 +41,21 @@ class BookProvider with ChangeNotifier {
   }
 
   Future<void> loadBooks() async {
-    final prefs = await SharedPreferences.getInstance();
-    final booksString = prefs.getString('books');
-    if (booksString != null) {
-      final List<dynamic> decodedList = jsonDecode(booksString);
-      _books.clear();
-      _books.addAll(
-        decodedList.map((item) => BookModel.fromJson(item)).toList()
-      );
-      notifyListeners();
+    if (_isLoading) return;
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final booksString = prefs.getString('books');
+      
+      if (booksString != null) {
+        final List<dynamic> decodedList = jsonDecode(booksString);
+        _books = decodedList.map((item) => BookModel.fromJson(item)).toList();
+      } else {
+        _books = [];
+      }
+    } catch (e) {
+      debugPrint('Error loading books: $e');
+      rethrow;
     }
   }
 

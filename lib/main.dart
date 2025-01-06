@@ -5,10 +5,26 @@ import 'providers/book_provider.dart';
 import 'providers/loan_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MyApp());
+  try {
+    await SharedPreferences.getInstance();
+    runApp(const MyApp());
+  } catch (e) {
+    debugPrint('Error initializing app: $e');
+    // Fallback jika terjadi error
+    runApp(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Text('Terjadi kesalahan saat memuat aplikasi'),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -19,20 +35,8 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(
-          create: (_) {
-            final provider = BookProvider();
-            provider.loadBooks();
-            return provider;
-          },
-        ),
-        ChangeNotifierProvider(
-          create: (_) {
-            final provider = LoanProvider();
-            provider.loadLoans();
-            return provider;
-          },
-        ),
+        ChangeNotifierProvider(create: (_) => BookProvider()),
+        ChangeNotifierProvider(create: (_) => LoanProvider()),
       ],
       child: MaterialApp(
         title: 'Digital Perpus',
@@ -40,23 +44,53 @@ class MyApp extends StatelessWidget {
           primarySwatch: Colors.blue,
           useMaterial3: true,
         ),
-        home: Consumer<AuthProvider>(
-          builder: (context, auth, _) {
-            return FutureBuilder(
-              future: auth.checkAuthStatus(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Scaffold(
-                    body: Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                }
-                return auth.isAuthenticated ? const HomeScreen() : const LoginScreen();
-              },
+        home: const InitialLoadingScreen(),
+      ),
+    );
+  }
+}
+
+class InitialLoadingScreen extends StatelessWidget {
+  const InitialLoadingScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: FutureBuilder(
+        future: Future.wait([
+          Provider.of<AuthProvider>(context, listen: false).checkAuthStatus(),
+          Provider.of<BookProvider>(context, listen: false).loadBooks(),
+          Provider.of<LoanProvider>(context, listen: false).loadLoans(),
+        ]),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
             );
-          },
-        ),
+          }
+          
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Terjadi kesalahan: ${snapshot.error}',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            );
+          }
+          
+          return Consumer<AuthProvider>(
+            builder: (context, auth, _) {
+              return auth.isAuthenticated ? const HomeScreen() : const LoginScreen();
+            },
+          );
+        },
       ),
     );
   }
