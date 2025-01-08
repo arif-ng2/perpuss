@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 
 Future<void> main() async {
   // Inisialisasi binding Flutter
@@ -51,9 +51,11 @@ Future<void> main() async {
   final pngBytes = byteData!.buffer.asUint8List();
   
   // Simpan file
-  final directory = await getApplicationDocumentsDirectory();
-  final iconPath = '${directory.path}/assets/icon/book_icon.png';
-  await Directory(iconPath).parent.create(recursive: true);
+  final currentDir = Directory.current.path;
+  final iconDir = path.join(currentDir, 'assets', 'icon');
+  await Directory(iconDir).create(recursive: true);
+  
+  final iconPath = path.join(iconDir, 'book_icon.png');
   await File(iconPath).writeAsBytes(pngBytes);
   
   print('Icon berhasil dibuat di: $iconPath');
