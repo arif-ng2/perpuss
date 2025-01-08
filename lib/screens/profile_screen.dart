@@ -6,143 +6,287 @@ import 'login_screen.dart';
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profil Admin'),
-        backgroundColor: const Color(0xFF1A237E),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        child: Column(
+  void _showInfoDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Informasi Aplikasi'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              color: const Color(0xFF1A237E),
-              child: Column(
-                children: [
-                  const CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Colors.white,
-                    child: Icon(
-                      Icons.person,
-                      size: 50,
-                      color: Color(0xFF1A237E),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    authProvider.username ?? 'Admin',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Administrator',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white70,
-                    ),
-                  ),
-                ],
+            const Text(
+              'Perpustakaan Digital',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
               ),
             ),
-            Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  _buildMenuItem(
-                    icon: Icons.person_outline,
-                    title: 'Informasi Akun',
-                    onTap: () {
-                      // TODO: Implementasi informasi akun
-                    },
-                  ),
-                  _buildMenuItem(
-                    icon: Icons.settings,
-                    title: 'Pengaturan',
-                    onTap: () {
-                      // TODO: Implementasi pengaturan
-                    },
-                  ),
-                  _buildMenuItem(
-                    icon: Icons.help_outline,
-                    title: 'Bantuan',
-                    onTap: () {
-                      // TODO: Implementasi bantuan
-                    },
-                  ),
-                  _buildMenuItem(
-                    icon: Icons.exit_to_app,
-                    title: 'Keluar',
-                    color: Colors.red,
-                    onTap: () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Konfirmasi'),
-                          content: const Text('Apakah Anda yakin ingin keluar?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Batal'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.red,
-                              ),
-                              child: const Text('Keluar'),
-                            ),
-                          ],
-                        ),
-                      );
-
-                      if (confirm == true) {
-                        await authProvider.logout();
-                        if (context.mounted) {
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(builder: (_) => const LoginScreen()),
-                            (route) => false,
-                          );
-                        }
-                      }
-                    },
-                  ),
-                ],
+            const SizedBox(height: 8),
+            Text(
+              'Versi 1.0.0',
+              style: TextStyle(
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Aplikasi ini dikembangkan untuk memudahkan pengelolaan dan peminjaman buku di perpustakaan.',
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '© 2024 Perpustakaan Digital',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 12,
               ),
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup'),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildMenuItem({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-    Color? color,
-  }) {
-    return ListTile(
-      leading: Icon(icon, color: color ?? Colors.black87),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: color ?? Colors.black87,
-          fontSize: 16,
+  void _showSettingsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pengaturan'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.notifications),
+              title: const Text('Notifikasi'),
+              trailing: Switch(
+                value: true,
+                onChanged: (value) {
+                  // TODO: Implementasi pengaturan notifikasi
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Pengaturan notifikasi akan segera hadir'),
+                    ),
+                  );
+                },
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.language),
+              title: const Text('Bahasa'),
+              trailing: const Text('Indonesia'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Pengaturan bahasa akan segera hadir'),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.dark_mode),
+              title: const Text('Mode Gelap'),
+              trailing: Switch(
+                value: false,
+                onChanged: (value) {
+                  // TODO: Implementasi mode gelap
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Mode gelap akan segera hadir'),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup'),
+          ),
+        ],
       ),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-      onTap: onTap,
+    );
+  }
+
+  void _showHelpDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Bantuan'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildHelpSection(
+              'Pencarian Buku',
+              'Gunakan kolom pencarian di halaman utama untuk mencari buku berdasarkan judul, penulis, atau deskripsi.',
+            ),
+            const SizedBox(height: 16),
+            _buildHelpSection(
+              'Peminjaman Buku',
+              'Klik pada buku yang ingin dipinjam, kemudian klik tombol "Pinjam" pada halaman detail buku.',
+            ),
+            const SizedBox(height: 16),
+            _buildHelpSection(
+              'Riwayat Peminjaman',
+              'Klik ikon riwayat di pojok kanan atas untuk melihat daftar buku yang sedang atau pernah Anda pinjam.',
+            ),
+            const SizedBox(height: 16),
+            _buildHelpSection(
+              'Pengembalian Buku',
+              'Pada halaman riwayat peminjaman, klik tombol "Kembalikan" pada buku yang ingin dikembalikan.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHelpSection(String title, String content) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(content),
+      ],
+    );
+  }
+
+  void _handleLogout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Konfirmasi Logout'),
+        content: const Text('Apakah Anda yakin ingin keluar?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await context.read<AuthProvider>().logout();
+              if (context.mounted) {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              }
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final username = context.watch<AuthProvider>().username;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Profil'),
+        backgroundColor: const Color(0xFF1A237E),
+        foregroundColor: Colors.white,
+      ),
+      body: ListView(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            color: const Color(0xFF1A237E),
+            child: Column(
+              children: [
+                const CircleAvatar(
+                  radius: 50,
+                  backgroundColor: Colors.white,
+                  child: Icon(
+                    Icons.person,
+                    size: 50,
+                    color: Color(0xFF1A237E),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  username ?? 'User',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Anggota Perpustakaan',
+                  style: TextStyle(
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('Informasi'),
+            subtitle: const Text('Tentang aplikasi dan versi'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showInfoDialog(context),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.settings),
+            title: const Text('Pengaturan'),
+            subtitle: const Text('Notifikasi, bahasa, dan tampilan'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showSettingsDialog(context),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.help_outline),
+            title: const Text('Bantuan'),
+            subtitle: const Text('Panduan penggunaan aplikasi'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showHelpDialog(context),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.red),
+            title: const Text(
+              'Logout',
+              style: TextStyle(color: Colors.red),
+            ),
+            onTap: () => _handleLogout(context),
+          ),
+        ],
+      ),
     );
   }
 } 

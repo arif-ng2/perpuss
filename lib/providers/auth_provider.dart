@@ -1,63 +1,75 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthProvider with ChangeNotifier {
-  bool _isAuthenticated = false;
+  bool _isLoggedIn = false;
   String? _username;
-  
-  bool get isAuthenticated => _isAuthenticated;
+  static const String _usersKey = 'users';
+  static const String _currentUserKey = 'current_user';
+
+  bool get isLoggedIn => _isLoggedIn;
   String? get username => _username;
 
   AuthProvider() {
-    checkAuthStatus();
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentUser = prefs.getString(_currentUserKey);
+    if (currentUser != null) {
+      _username = currentUser;
+      _isLoggedIn = true;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> register(String username, String password) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Ambil daftar user yang sudah ada
+    final usersJson = prefs.getString(_usersKey);
+    final users = usersJson != null ? Map<String, String>.from(json.decode(usersJson)) : <String, String>{};
+    
+    // Cek apakah username sudah digunakan
+    if (users.containsKey(username)) {
+      return false;
+    }
+    
+    // Tambahkan user baru
+    users[username] = password;
+    await prefs.setString(_usersKey, json.encode(users));
+    
+    return true;
   }
 
   Future<bool> login(String username, String password) async {
-    try {
-      // Simulasi login sederhana
-      if (username == 'admin' && password == 'admin123') {
-        _isAuthenticated = true;
-        _username = username;
-        
-        // Simpan status login dan username
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('isAuthenticated', true);
-        await prefs.setString('username', username);
-        
-        notifyListeners();
-        return true;
-      }
-      return false;
-    } catch (e) {
-      debugPrint('Error during login: $e');
-      return false;
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Ambil daftar user
+    final usersJson = prefs.getString(_usersKey);
+    if (usersJson == null) return false;
+    
+    final users = Map<String, String>.from(json.decode(usersJson));
+    
+    // Cek kredensial
+    if (users[username] == password) {
+      _username = username;
+      _isLoggedIn = true;
+      await prefs.setString(_currentUserKey, username);
+      notifyListeners();
+      return true;
     }
+    
+    return false;
   }
 
   Future<void> logout() async {
-    try {
-      _isAuthenticated = false;
-      _username = null;
-      
-      // Hapus status login dan username
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('isAuthenticated');
-      await prefs.remove('username');
-      
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Error during logout: $e');
-    }
-  }
-
-  Future<void> checkAuthStatus() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      _isAuthenticated = prefs.getBool('isAuthenticated') ?? false;
-      _username = prefs.getString('username');
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Error checking auth status: $e');
-    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_currentUserKey);
+    _username = null;
+    _isLoggedIn = false;
+    notifyListeners();
   }
 } 

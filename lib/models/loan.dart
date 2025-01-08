@@ -1,10 +1,14 @@
+import '../models/book.dart';
+
 class Loan {
   final String id;
   final String bookId;
   final String userId;
-  final DateTime borrowDate;
-  final DateTime dueDate;
-  DateTime? returnDate;
+  final String borrowDate;
+  final String dueDate;
+  final String? returnDate;
+  final String status;
+  final Book book;
 
   Loan({
     required this.id,
@@ -13,26 +17,14 @@ class Loan {
     required this.borrowDate,
     required this.dueDate,
     this.returnDate,
+    required this.status,
+    required this.book,
   });
 
-  bool isOverdue() {
-    if (returnDate != null) return false;
-    return DateTime.now().isAfter(dueDate);
-  }
-
-  bool isReturned() {
-    return returnDate != null;
-  }
-
-  String formatBorrowDate() {
-    return '${borrowDate.day}/${borrowDate.month}/${borrowDate.year}';
-  }
-
-  String formatReturnDate() {
-    if (returnDate == null) {
-      return 'Belum dikembalikan';
-    }
-    return '${returnDate!.day}/${returnDate!.month}/${returnDate!.year}';
+  bool get isOverdue {
+    if (status != 'dipinjam') return false;
+    final due = DateTime.parse(dueDate);
+    return DateTime.now().isAfter(due);
   }
 
   Map<String, dynamic> toJson() {
@@ -40,20 +32,23 @@ class Loan {
       'id': id,
       'bookId': bookId,
       'userId': userId,
-      'borrowDate': borrowDate.toIso8601String(),
-      'dueDate': dueDate.toIso8601String(),
-      'returnDate': returnDate?.toIso8601String(),
+      'borrowDate': borrowDate,
+      'dueDate': dueDate,
+      'returnDate': returnDate,
+      'status': status,
     };
   }
 
-  factory Loan.fromJson(Map<String, dynamic> json) {
+  factory Loan.fromJson(Map<String, dynamic> json, Book book) {
     return Loan(
       id: json['id'],
       bookId: json['bookId'],
       userId: json['userId'],
-      borrowDate: DateTime.parse(json['borrowDate']),
-      dueDate: DateTime.parse(json['dueDate']),
-      returnDate: json['returnDate'] != null ? DateTime.parse(json['returnDate']) : null,
+      borrowDate: json['borrowDate'],
+      dueDate: json['dueDate'],
+      returnDate: json['returnDate'],
+      status: json['status'],
+      book: book,
     );
   }
 } 
