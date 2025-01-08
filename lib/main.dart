@@ -4,27 +4,10 @@ import 'providers/auth_provider.dart';
 import 'providers/book_provider.dart';
 import 'providers/loan_provider.dart';
 import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    await SharedPreferences.getInstance();
-    runApp(const MyApp());
-  } catch (e) {
-    debugPrint('Error initializing app: $e');
-    // Fallback jika terjadi error
-    runApp(
-      const MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Text('Terjadi kesalahan saat memuat aplikasi'),
-          ),
-        ),
-      ),
-    );
-  }
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -36,61 +19,19 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => BookProvider()),
-        ChangeNotifierProvider(create: (_) => LoanProvider()),
+        ChangeNotifierProxyProvider<BookProvider, LoanProvider>(
+          create: (context) => LoanProvider(context.read<BookProvider>()),
+          update: (context, bookProvider, previous) => 
+            previous ?? LoanProvider(bookProvider),
+        ),
       ],
       child: MaterialApp(
-        title: 'Digital Perpus',
+        title: 'Perpustakaan Digital',
         theme: ThemeData(
           primarySwatch: Colors.blue,
           useMaterial3: true,
         ),
-        home: const InitialLoadingScreen(),
-      ),
-    );
-  }
-}
-
-class InitialLoadingScreen extends StatelessWidget {
-  const InitialLoadingScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: FutureBuilder(
-        future: Future.wait([
-          Provider.of<AuthProvider>(context, listen: false).checkAuthStatus(),
-          Provider.of<BookProvider>(context, listen: false).loadBooks(),
-          Provider.of<LoanProvider>(context, listen: false).loadLoans(),
-        ]),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
-          
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Terjadi kesalahan: ${snapshot.error}',
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            );
-          }
-          
-          return Consumer<AuthProvider>(
-            builder: (context, auth, _) {
-              return auth.isAuthenticated ? const HomeScreen() : const LoginScreen();
-            },
-          );
-        },
+        home: const LoginScreen(),
       ),
     );
   }

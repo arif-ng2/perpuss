@@ -1,35 +1,63 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/auth_model.dart';
 
 class AuthProvider with ChangeNotifier {
   bool _isAuthenticated = false;
+  String? _username;
+  
   bool get isAuthenticated => _isAuthenticated;
-  bool _isInitialized = false;
+  String? get username => _username;
 
-  Future<void> login(String username, String password) async {
-    final auth = AuthModel(username: username, password: password);
-    
-    if (auth.isValidCredentials()) {
-      _isAuthenticated = true;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isAuthenticated', true);
-      notifyListeners();
+  AuthProvider() {
+    checkAuthStatus();
+  }
+
+  Future<bool> login(String username, String password) async {
+    try {
+      // Simulasi login sederhana
+      if (username == 'admin' && password == 'admin123') {
+        _isAuthenticated = true;
+        _username = username;
+        
+        // Simpan status login dan username
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('isAuthenticated', true);
+        await prefs.setString('username', username);
+        
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Error during login: $e');
+      return false;
     }
   }
 
   Future<void> logout() async {
-    _isAuthenticated = false;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isAuthenticated', false);
-    notifyListeners();
+    try {
+      _isAuthenticated = false;
+      _username = null;
+      
+      // Hapus status login dan username
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('isAuthenticated');
+      await prefs.remove('username');
+      
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error during logout: $e');
+    }
   }
 
   Future<void> checkAuthStatus() async {
-    if (_isInitialized) return;
-    final prefs = await SharedPreferences.getInstance();
-    _isAuthenticated = prefs.getBool('isAuthenticated') ?? false;
-    _isInitialized = true;
-    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _isAuthenticated = prefs.getBool('isAuthenticated') ?? false;
+      _username = prefs.getString('username');
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error checking auth status: $e');
+    }
   }
 } 
