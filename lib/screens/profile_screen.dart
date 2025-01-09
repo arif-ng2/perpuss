@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/theme_provider.dart';
 import 'return_history_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -48,6 +49,8 @@ class ProfileScreen extends StatelessWidget {
   }
 
   void _showSettings(BuildContext context) {
+    final isDarkMode = context.read<ThemeProvider>().isDarkMode;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -56,15 +59,12 @@ class ProfileScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             SwitchListTile(
-              title: const Text('Notifikasi'),
-              subtitle: const Text('Aktifkan notifikasi peminjaman'),
-              value: true,
+              title: const Text('Tema Gelap'),
+              subtitle: Text(isDarkMode ? 'Aktif' : 'Nonaktif'),
+              value: isDarkMode,
               onChanged: (value) {
-                // TODO: Implementasi pengaturan notifikasi
+                context.read<ThemeProvider>().toggleTheme();
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Pengaturan notifikasi berhasil disimpan')),
-                );
               },
             ),
             ListTile(
@@ -75,17 +75,6 @@ class ProfileScreen extends StatelessWidget {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Pengaturan bahasa akan segera hadir')),
-                );
-              },
-            ),
-            ListTile(
-              title: const Text('Tema'),
-              subtitle: const Text('Terang'),
-              trailing: const Icon(Icons.arrow_forward_ios),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Pengaturan tema akan segera hadir')),
                 );
               },
             ),
@@ -104,13 +93,11 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final username = context.read<AuthProvider>().username;
+    final isAdmin = context.read<AuthProvider>().isAdmin;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profil'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -121,7 +108,7 @@ class ProfileScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.blue[50],
+                color: isAdmin ? Colors.blue.withOpacity(0.1) : Colors.green.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -129,13 +116,13 @@ class ProfileScreen extends StatelessWidget {
                   // Avatar
                   CircleAvatar(
                     radius: 30,
-                    backgroundColor: Colors.blue[100],
+                    backgroundColor: isAdmin ? Colors.blue : Colors.green,
                     child: Text(
                       username?[0].toUpperCase() ?? 'U',
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
-                        color: Colors.black54,
+                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -152,10 +139,11 @@ class ProfileScreen extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const Text(
-                          'Anggota Aktif',
+                        Text(
+                          isAdmin ? 'Administrator' : 'Anggota',
                           style: TextStyle(
-                            color: Colors.black54,
+                            color: isAdmin ? Colors.blue : Colors.green,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ],
