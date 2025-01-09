@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/book.dart';
 import '../models/loan.dart';
 import 'book_provider.dart';
@@ -159,11 +159,46 @@ class LoanProvider with ChangeNotifier {
     }
   }
 
+  Future<List<Loan>> getReturnedLoans(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final loansJson = prefs.getString(_loansKey);
+      
+      if (loansJson == null) return [];
+
+      final loansList = List<Map<String, dynamic>>.from(json.decode(loansJson));
+      return loansList
+          .where((loan) => 
+            loan['userId'] == userId && 
+            loan['status'] == 'dikembalikan'
+          )
+          .map((loan) {
+            final book = _bookProvider.getBookById(loan['bookId']);
+            if (book != null) {
+              return Loan.fromJson(loan, book);
+            }
+            return null;
+          })
+          .whereType<Loan>()
+          .toList();
+    } catch (e) {
+      debugPrint('Error getting returned loans: $e');
+      return [];
+    }
+  }
+
   bool canBorrowMore(String userId) {
     // Batasi maksimal 2 buku yang dapat dipinjam secara bersamaan
     return _loans.where((loan) => 
       loan.userId == userId && 
       loan.status == 'dipinjam'
     ).length < 2;
+  }
+
+  bool isBookBorrowed(String bookId) {
+    return _loans.any((loan) => 
+      loan.bookId == bookId && 
+      loan.status == 'dipinjam'
+    );
   }
 } 

@@ -51,14 +51,20 @@ class _BorrowFormScreenState extends State<BorrowFormScreen> {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         bookId: widget.book.id,
         userId: context.read<AuthProvider>().username!,
-        borrowDate: _borrowDate,
-        dueDate: _returnDate,
+        borrowDate: _borrowDate.toString(),
+        dueDate: _returnDate.toString(),
         returnDate: null,
+        status: 'dipinjam',
+        book: widget.book,
       );
 
       try {
-        await context.read<LoanProvider>().addLoan(loan);
-        await context.read<BookProvider>().updateBookAvailability(widget.book.id, false);
+        await context.read<LoanProvider>().borrowBook(
+          context.read<AuthProvider>().username!,
+          widget.book,
+          _borrowDate,
+          _returnDate,
+        );
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
