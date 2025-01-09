@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -15,9 +14,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  bool _isPasswordVisible = false;
-  bool _isConfirmPasswordVisible = false;
   bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void dispose() {
@@ -29,9 +28,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   void _handleRegister() async {
     if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+      if (_passwordController.text != _confirmPasswordController.text) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password tidak cocok'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      setState(() => _isLoading = true);
 
       try {
         final success = await context.read<AuthProvider>().register(
@@ -43,18 +50,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
           if (success) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Pendaftaran berhasil! Silakan login.'),
+                content: Text('Registrasi berhasil. Silakan login.'),
                 backgroundColor: Colors.green,
               ),
             );
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const LoginScreen()),
-            );
+            Navigator.pop(context);
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Username sudah digunakan. Silakan gunakan username lain.'),
+                content: Text('Username sudah digunakan'),
                 backgroundColor: Colors.red,
               ),
             );
@@ -63,17 +67,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Terjadi kesalahan. Silakan coba lagi.'),
+            SnackBar(
+              content: Text(e.toString()),
               backgroundColor: Colors.red,
             ),
           );
         }
       } finally {
         if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
+          setState(() => _isLoading = false);
         }
       }
     }
@@ -82,7 +84,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      appBar: AppBar(
+        title: const Text('Daftar Akun'),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -93,47 +100,40 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Icon
                   const Icon(
-                    Icons.library_books,
+                    Icons.person_add,
                     size: 80,
-                    color: Color(0xFF1A237E),
+                    color: Colors.blue,
                   ),
                   const SizedBox(height: 24),
+                  
+                  // Judul
                   const Text(
-                    'Daftar Akun Baru',
+                    'Buat Akun Baru',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A237E),
                     ),
-                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Silakan daftar untuk mengakses perpustakaan',
+                    'Silakan isi form berikut untuk mendaftar',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 16,
                       color: Colors.grey,
                     ),
-                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
+
+                  // Form Register
                   TextFormField(
                     controller: _usernameController,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       labelText: 'Username',
-                      prefixIcon: const Icon(Icons.person),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.grey),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF1A237E)),
-                      ),
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person),
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -148,32 +148,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _passwordController,
-                    obscureText: !_isPasswordVisible,
+                    obscureText: _obscurePassword,
                     decoration: InputDecoration(
                       labelText: 'Password',
+                      border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.lock),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _isPasswordVisible
-                              ? Icons.visibility
-                              : Icons.visibility_off,
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
                         ),
                         onPressed: () {
                           setState(() {
-                            _isPasswordVisible = !_isPasswordVisible;
+                            _obscurePassword = !_obscurePassword;
                           });
                         },
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.grey),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF1A237E)),
                       ),
                     ),
                     validator: (value) {
@@ -189,32 +179,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _confirmPasswordController,
-                    obscureText: !_isConfirmPasswordVisible,
+                    obscureText: _obscureConfirmPassword,
                     decoration: InputDecoration(
                       labelText: 'Konfirmasi Password',
+                      border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _isConfirmPasswordVisible
-                              ? Icons.visibility
-                              : Icons.visibility_off,
+                          _obscureConfirmPassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
                         ),
                         onPressed: () {
                           setState(() {
-                            _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
+                            _obscureConfirmPassword = !_obscureConfirmPassword;
                           });
                         },
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.grey),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF1A237E)),
                       ),
                     ),
                     validator: (value) {
@@ -228,14 +208,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     },
                   ),
                   const SizedBox(height: 24),
+
+                  // Tombol Register
                   ElevatedButton(
                     onPressed: _isLoading ? null : _handleRegister,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1A237E),
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      backgroundColor: Colors.blue,
+                      disabledBackgroundColor: Colors.blue.withOpacity(0.5),
                     ),
                     child: _isLoading
                         ? const SizedBox(
@@ -243,31 +223,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             width: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : const Text(
                             'Daftar',
                             style: TextStyle(
                               fontSize: 16,
-                              fontWeight: FontWeight.bold,
                               color: Colors.white,
                             ),
                           ),
                   ),
                   const SizedBox(height: 16),
+
+                  // Tombol Login
                   TextButton(
-                    onPressed: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      );
-                    },
+                    onPressed: () => Navigator.pop(context),
                     child: const Text(
                       'Sudah punya akun? Login',
-                      style: TextStyle(
-                        color: Color(0xFF1A237E),
-                      ),
+                      style: TextStyle(color: Colors.blue),
                     ),
                   ),
                 ],
